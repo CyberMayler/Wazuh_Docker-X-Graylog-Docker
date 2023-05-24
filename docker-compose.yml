@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: "mongo:6.0"
+    volumes:
+      - "mongodb_data:/data/db"
+    restart: "on-failure"
+
+  opensearch:
+    image: "opensearchproject/opensearch:2.4.1"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "bootstrap.memory_lock=true"
+      - "discovery.type=single-node"
+      - "action.auto_create_index=false"
+      - "plugins.security.ssl.http.enabled=false"
+      - "plugins.security.disabled=true"
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - "os_data:/usr/share/opensearch/data"
+    restart: "on-failure"
+
+  graylog:
+    hostname: "server"
+    image: "${GRAYLOG_IMAGE:-graylog/graylog:5.1}"
+    depends_on:
+      opensearch:
+        condition: "service_started"
+      mongodb:
+        condition: "service_started"
+    entrypoint: "/usr/bin/tini -- wait-for-it opensearch:9200 --  /docker-entrypoint.sh"
+    environment:
+      GRAYLOG_NODE_ID_FILE: "/usr/share/graylog/data/config/node-id"
+      GRAYLOG_PASSWORD_SECRET: "${GRAYLOG_PASSWORD_SECRET}"
+      GRAYLOG_ROOT_PASSWORD_SHA2: "${GRAYLOG_ROOT_PASSWORD_SHA2}"
+      GRAYLOG_HTTP_BIND_ADDRESS: "0.0.0.0:9000"
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://localhost:9000/"
+      #In my case, I put wazuh on one server and graylog on another for performance reasons. The certificate that is generated in the wazuh multi-node in docker mode does 
+      #not let you change the structure and add an alternative DNS CN (IP) as described in the certs.yml file of the wazuh multi-node because if you make 
+      #this change, indexer1.wazuh does not go up . 
+      #In my case the user I created in internalusers.yml was not working and I kept the admin for testing.
+      GRAYLOG_ELASTICSEARCH_HOSTS: "https://admin:SecretPassword@wazuh1.indexer:9200"
+      GRAYLOG_MONGODB_URI: "mongodb://mongodb:27017/graylog"
+      #you need to add the variable below to point to the new cacerts certificate created using wazuh_indexer_ssl's cacerts x root-ca.pem integration.
+      GRAYLOG_SERVER_JAVA_OPTS: "-Dlog4j2.formatMsgNoLookups=true -Djavax.net.ssl.trustStore=/usr/share/graylog/certs/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
+    ports:
+    - "5044:5044/tcp"   # Beats
+    - "5140:5140/udp"   # Syslog
+    - "5140:5140/tcp"   # Syslog
+    - "5555:5555/tcp"   # RAW TCP
+    - "5555:5555/udp"   # RAW TCP
+    - "9000:9000/tcp"   # Server API
+    - "12201:12201/tcp" # GELF TCP
+    - "12201:12201/udp" # GELF UDP
+    #- "10000:10000/tcp" # Custom TCP port
+    #- "10000:10000/udp" # Custom UDP port
+    - "13301:13301/tcp" # Forwarder data
+    - "13302:13302/tcp" # Forwarder config
+    volumes:
+      - "graylog_data:/usr/share/graylog/data/data"
+      - "graylog_journal:/usr/share/graylog/data/journal"
+    #    Here basically you will have to do just this:
+    # 1 - Create the certs folder inside the graylog structure.
+    # 2 - Copy the file /config/wazuh_indexer_ssl_certs/root-ca.pem into the certs folder;
+    # 3 - Docker-up the graylog/graylog container and copy the java certificate file into the certs folder. Inside the certs folder, run the command below:
+    #      docker cp graylog/graylog:/opt/java/openjdk/lib/security/cacerts .
+    #             note: If the java path is different, use the env command to find out where JAVA_HOME=/opt/java/openjdk is pointing.
+    # 4 - Docker-down the graylog container and in the local machine install the OpenJDK 64-Bit Server VM (build 17.0.7+7-LT that contains keytool.
+    # 5 - With cacerts + root-ca.pem in the same place, use the command below to import the wazuh certificate into cacerts.
+    #     keytool -importcert -keystore cacerts -storepass changeit -alias root_ca -file root-ca.pem
+    #             Then press YES to accept.
+    # 6 - Once that's done, map the cacerts certificate to the path below.
+      - "./graylog/certs:/usr/share/graylog/certs"
+    #  The alternative I found for GRAYLOG_ELASTICSEARCH_HOSTS to work: pointing to wazuh1.indexer without using the IP, the same one that should be inside the wazuh certificate was to use the parameter below.
+
+    # 1 - Docker up in the graylog container;
+    # 2 - Copy the file from inside graylog docker cp graylog/graylog:/etc/hosts . to a folder within the graylog structure.
+    # 3 - In my example I added the IP of my wazuh1.indexer and resolving the hostname.
+    #   127.0.0.1 localhost
+    #   192.168.154.130 wazuh1.indexer # your wazuh ip will be different
+    #   ::1 localhost ip6-localhost ip6-loopback
+    #   fe00::0 ip6-localnet
+    #   ff00::0 ip6-mcastprefix
+    #   ff02::1 ip6-allnodes
+    #   ff02::2 ip6-allrouters
+    #   172.27.0.4 server
+      - "./graylog/hosts:/etc/hosts"
+    restart: "on-failure"
+
+volumes:
+  mongodb_data:
+  os_data:
+  graylog_data:
+  graylog_journal:
