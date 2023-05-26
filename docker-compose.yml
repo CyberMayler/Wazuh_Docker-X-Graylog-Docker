@@ -47,6 +47,8 @@ services:
       #this change, indexer1.wazuh does not go up . 
       #In my case the user I created in internalusers.yml was not working and I kept the admin for testing.
       GRAYLOG_ELASTICSEARCH_HOSTS: "https://admin:SecretPassword@wazuh1.indexer:9200"
+      #You need disable #compatibility.override_main_response_version: true from the wazuh1_indexer config file in
+      # your wazuh_docker -> multi-node/config/wazuh_indexer/wazuh1.indexer.yml. Without this, graylog dashboard will not work.
       GRAYLOG_MONGODB_URI: "mongodb://mongodb:27017/graylog"
       #you need to add the variable below to point to the new cacerts certificate created using wazuh_indexer_ssl's cacerts x root-ca.pem integration.
       GRAYLOG_SERVER_JAVA_OPTS: "-Dlog4j2.formatMsgNoLookups=true -Djavax.net.ssl.trustStore=/usr/share/graylog/certs/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
