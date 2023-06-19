@@ -25,6 +25,7 @@ services:
         hard: 65536
     volumes:
       - "os_data:/usr/share/opensearch/data"
+      - "${VOLUME}/opensearch/hosts:/etc/hosts"
     restart: "on-failure"
 
   graylog:
@@ -40,8 +41,10 @@ services:
       GRAYLOG_NODE_ID_FILE: "/usr/share/graylog/data/config/node-id"
       GRAYLOG_PASSWORD_SECRET: "${GRAYLOG_PASSWORD_SECRET}"
       GRAYLOG_ROOT_PASSWORD_SHA2: "${GRAYLOG_ROOT_PASSWORD_SHA2}"
-      GRAYLOG_HTTP_BIND_ADDRESS: "0.0.0.0:9000"
-      GRAYLOG_HTTP_EXTERNAL_URI: "http://localhost:9000/"
+      GRAYLOG_HTTP_BIND_ADDRESS: "0.0.0.0:9010"
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://localhost:9010/"
+      TZ: "America/Sao_Paulo"
+      GRAYLOG_ROOT_TIMEZONE: "America/Sao_Paulo"
       #In my case, I put wazuh on one server and graylog on another for performance reasons. The certificate that is generated in the wazuh multi-node in docker mode does 
       #not let you change the structure and add an alternative DNS CN (IP) as described in the certs.yml file of the wazuh multi-node because if you make 
       #this change, indexer1.wazuh does not go up . 
@@ -58,7 +61,7 @@ services:
     - "5140:5140/tcp"   # Syslog
     - "5555:5555/tcp"   # RAW TCP
     - "5555:5555/udp"   # RAW TCP
-    - "9000:9000/tcp"   # Server API
+    - "9010:9010/tcp"   # Server API
     - "12201:12201/tcp" # GELF TCP
     - "12201:12201/udp" # GELF UDP
     #- "10000:10000/tcp" # Custom TCP port
@@ -79,7 +82,7 @@ services:
     #     keytool -importcert -keystore cacerts -storepass changeit -alias root_ca -file root-ca.pem
     #             Then press YES to accept.
     # 6 - Once that's done, map the cacerts certificate to the path below.
-      - "./graylog/certs:/usr/share/graylog/certs"
+      - "${VOLUME}/certs:/usr/share/graylog/certs"
     #  The alternative I found for GRAYLOG_ELASTICSEARCH_HOSTS to work: pointing to wazuh1.indexer without using the IP, the same one that should be inside the wazuh certificate was to use the parameter below.
 
     # 1 - Docker up in the graylog container;
@@ -93,7 +96,7 @@ services:
     #   ff02::1 ip6-allnodes
     #   ff02::2 ip6-allrouters
     #   172.27.0.4 server
-      - "./graylog/hosts:/etc/hosts"
+      - "${VOLUME}/hosts:/etc/hosts"
     restart: "on-failure"
 
 volumes:
